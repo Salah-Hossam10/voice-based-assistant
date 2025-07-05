@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Voice AI Assistant</title>
+  <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet"/>
+  <style>
+    :root {
+      --primary-color: #4CAF50;
+      --secondary-color: #ffffff;
+      --bg-color: #f0f4f8;
+      --text-dark: #222;
+      --text-muted: #666;
+      --box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+      --radius: 12px;
+    }
+
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Segoe UI', sans-serif;
+      background: var(--bg-color);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+
+    .container {
+      background: var(--secondary-color);
+      max-width: 800px;
+      width: 100%;
+      padding: 30px;
+      margin: 20px;
+      border-radius: var(--radius);
+      box-shadow: var(--box-shadow);
+      transition: all 0.3s ease;
+    }
+
+    h1 {
+      text-align: center;
+      color: var(--primary-color);
+      font-size: 2rem;
+      margin-bottom: 20px;
+    }
+
+    .controls {
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+      flex-wrap: wrap;
+      margin-bottom: 25px;
+    }
+
+    button {
+      background-color: var(--primary-color);
+      color: white;
+      border: none;
+      padding: 12px 24px;
+      font-size: 16px;
+      border-radius: var(--radius);
+      cursor: pointer;
+      transition: background-color 0.3s ease, transform 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    button:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+    }
+
+    button:hover:not(:disabled) {
+      background-color: #3e8e41;
+      transform: translateY(-2px);
+    }
+
+    .status {
+      text-align: center;
+      font-style: italic;
+      color: var(--text-muted);
+      margin-bottom: 15px;
+    }
+
+    .section {
+      margin: 20px 0;
+    }
+
+    .section h3 {
+      color: var(--text-dark);
+      margin-bottom: 10px;
+    }
+
+    .box {
+      background-color: #f9f9f9;
+      border: 1px solid #e0e0e0;
+      padding: 15px;
+      border-radius: var(--radius);
+      min-height: 80px;
+      white-space: pre-wrap;
+      overflow-wrap: break-word;
+    }
+
+    .audio-player {
+      display: none;
+      margin-top: 15px;
+      width: 100%;
+    }
+
+    @media (max-width: 600px) {
+      .controls {
+        flex-direction: column;
+      }
+
+      button {
+        width: 100%;
+        justify-content: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1><i class="fa-solid fa-microphone-lines"></i> Voice AI Assistant</h1>
+
+    <div class="controls">
+      <button id="startBtn"><i class="fa-solid fa-circle-record"></i> Start Recording</button>
+      <button id="stopBtn" disabled><i class="fa-solid fa-stop"></i> Stop & Process</button>
+    </div>
+
+    <div class="status" id="status">🎤 Ready to record</div>
+
+    <div class="section">
+      <h3><i class="fa-solid fa-user"></i> Your Input:</h3>
+      <div class="box" id="transcript"></div>
+    </div>
+
+    <div class="section">
+      <h3><i class="fa-solid fa-robot"></i> AI Response:</h3>
+      <div class="box" id="response"></div>
+      <audio controls id="audioPlayer" class="audio-player"></audio>
+    </div>
+  </div>
+
+  <script>
+    let mediaRecorder;
+    let audioChunks = [];
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const status = document.getElementById('status');
+    const transcript = document.getElementById('transcript');
+    const response = document.getElementById('response');
+    const audioPlayer = document.getElementById('audioPlayer');
+
+    startBtn.addEventListener('click', startRecording);
+    stopBtn.addEventListener('click', stopRecording);
+
+    async function startRecording() {
+      try {
+        status.textContent = "🎙️ Recording... Speak now";
+        startBtn.disabled = true;
+        stopBtn.disabled = false;
+
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream);
+        audioChunks = [];
+
+        mediaRecorder.ondataavailable = event => {
+          audioChunks.push(event.data);
+        };
+
+        mediaRecorder.start();
+      } catch (error) {
+        console.error("Recording error:", error);
+        status.textContent = "❌ Error: " + error.message;
+        startBtn.disabled = false;
+      }
+    }
+
+    async function stopRecording() {
+      status.textContent = "⏳ Processing...";
+      stopBtn.disabled = true;
+
+      mediaRecorder.stop();
+      mediaRecorder.onstop = async () => {
+        const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+
+        try {
+          const formData = new FormData();
+          formData.append('audio', audioBlob, 'recording.webm');
+
+          const result = await axios.post('/process_voice', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' }
+          });
+
+          if (result.data.success) {
+            transcript.textContent = result.data.transcript;
+            response.textContent = result.data.response;
+
+            audioPlayer.src = `data:audio/mpeg;base64,${result.data.audio}`;
+            audioPlayer.style.display = 'block';
+            audioPlayer.play();
+
+            status.textContent = "✅ Done! Ready to record again.";
+          } else {
+            status.textContent = "❌ Error: " + result.data.error;
+          }
+        } catch (error) {
+          console.error("Voice processing error:", error);
+          status.textContent = "❌ Request failed.";
+        }
+
+        startBtn.disabled = false;
+      };
+    }
+  </script>
+</body>
+</html>
